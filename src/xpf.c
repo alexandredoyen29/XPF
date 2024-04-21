@@ -551,6 +551,7 @@ void xpf_stop(void)
 	if (gXPF.kernelPrelinkTextSection) pfsec_free(gXPF.kernelPrelinkTextSection);
 	if (gXPF.kernelBootdataInit) pfsec_free(gXPF.kernelBootdataInit);
 	if (gXPF.kernelPLKTextSection) pfsec_free(gXPF.kernelPLKTextSection);
+	if (gXPF.kernelPLKDataConstSection) pfsec_free(gXPF.kernelPLKDataConstSection);
 	if (gXPF.kernelInfoPlistSection) pfsec_free(gXPF.kernelInfoPlistSection);
 	if (gXPF.kernelContainer) fat_free(gXPF.kernelContainer);
 
