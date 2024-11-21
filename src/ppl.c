@@ -135,6 +135,7 @@ static uint64_t xpf_find_pmap_query_trust_cache_safe(void)
 	uint32_t blAny = 0, blAnyMask = 0;
 	arm64_gen_b_l(OPT_BOOL(true), OPT_UINT64_NONE, OPT_UINT64_NONE, &blAny, &blAnyMask);
 
+        printf("xpf_find_ppl_trust_cache_rt: 0x%016llX\n", NULL);
 	uint64_t blAddr = pfsec_find_next_inst(gXPF.kernelPPLTextSection, pmap_lookup_in_loaded_trust_caches_internal, 30, blAny, blAnyMask);
 	uint32_t blInst = pfsec_read32(gXPF.kernelPPLTextSection, blAddr);
 

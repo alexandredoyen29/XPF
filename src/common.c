@@ -2,6 +2,21 @@
 
 static uint64_t xpf_find_arm_vm_init(void)
 {
+        if (gXPF.kernelIsFileset && gXPF.kernelBootCodeTextSection && strcmp(gXPF.darwinVersion, "23.0.0") >= 0) {
+          uint64_t sptm_struct = xpf_item_resolve("kernelSymbol.sptm_struct");
+          if(!sptm_struct) {
+            return 0;
+          }
+          uint64_t root_table_paddrAddr = sptm_struct + 0x38; // hardcode for now?
+          PFXrefMetric *root_table_paddrXrefMetric = pfmetric_xref_init(root_table_paddrAddr, XREF_TYPE_MASK_REFERENCE);
+          __block uint64_t root_table_paddrXref = 0;
+          pfmetric_run(gXPF.kernelTextSection, root_table_paddrXrefMetric, ^(uint64_t vmaddr, bool *stop) {
+            root_table_paddrXref = vmaddr;
+            *stop = true;
+          });
+          pfmetric_free(root_table_paddrXrefMetric);
+          return pfsec_find_function_start(gXPF.kernelTextSection, root_table_paddrXref);
+        }
 	PFStringMetric *contiguousHintMetric = pfmetric_string_init("use_contiguous_hint");
 	__block uint64_t contiguousHintAddr = 0;
 	pfmetric_run(gXPF.kernelStringSection, contiguousHintMetric, ^(uint64_t vmaddr, bool *stop) {
@@ -34,7 +49,6 @@ static uint64_t xpf_find_arm_vm_init_reference(uint32_t n)
 		strAddr = pfsec_find_next_inst(gXPF.kernelTextSection, toCheck, 0x20, strAny, strAnyMask);
 		toCheck = strAddr + 4;
 	}
-
 	return pfsec_arm64_resolve_adrp_ldr_str_add_reference_auto(gXPF.kernelTextSection, strAddr);
 }
 
@@ -202,12 +216,106 @@ static uint64_t xpf_find_start_first_cpu(void)
 {
 	uint64_t start_first_cpu = 0;
 	arm64_dec_b_l(pfsec_read32(gXPF.kernelTextSection, gXPF.kernelEntry), gXPF.kernelEntry, &start_first_cpu, NULL);
+        if(!start_first_cpu && gXPF.kernelIsFileset && gXPF.kernelBootCodeTextSection) {
+          start_first_cpu = gXPF.kernelBootCodeTextSection->vmaddr;
+        }
 	return start_first_cpu;
+}
+
+static uint64_t xpf_find_sptm_struct(void) {
+  if (gXPF.kernelIsFileset && gXPF.kernelBootCodeTextSection && strcmp(gXPF.darwinVersion, "23.0.0") >= 0) {
+    //sptm
+    // r2 /x 5F2403D5A0000000000000D0:FFFFFFFFFF000000000000FF
+    uint32_t libsptm_init_insn[] = (uint32_t[]){
+        0xD503245F, // bti c
+        0x000000A0, // cbz xANY, #ANY
+        0xD0000000, // adrp xANY, #ANY
+        0xA9400000  // ldp xANY, xANY, [xANY,#ANY]
+    };
+    uint32_t libsptm_init_mask[] = (uint32_t[]){
+        0xFFFFFFFF,
+        0x000000FF,
+        0xFF000000,
+        0xFFFF0000
+    };
+
+    PFPatternMetric *metric = pfmetric_pattern_init(libsptm_init_insn, libsptm_init_mask, sizeof(libsptm_init_insn), sizeof(uint32_t));
+    __block uint64_t libsptm_init_addr = 0;
+    pfmetric_run(gXPF.kernelTextSection, metric, ^(uint64_t vmaddr, bool *stop) {
+      libsptm_init_addr = vmaddr;
+      *stop = true;
+    });
+    pfmetric_free(metric);
+    if(libsptm_init_addr) {
+      PFXrefMetric *libsptm_initXrefMetric = pfmetric_xref_init(libsptm_init_addr, XREF_TYPE_MASK_CALL);
+      __block uint64_t libsptm_initXref = 0;
+      pfmetric_run(gXPF.kernelTextSection, libsptm_initXrefMetric, ^(uint64_t vmaddr, bool *stop) {
+        libsptm_initXref = vmaddr;
+        *stop = true;
+      });
+      pfmetric_free(libsptm_initXrefMetric);
+      if(libsptm_initXref) {
+        uint32_t addAny = 0, addAnyMask = 0;
+        arm64_gen_add_imm(ARM64_REG_ANY, ARM64_REG_ANY, OPT_UINT64_NONE, &addAny, &addAnyMask);
+        uint64_t addAddr = pfsec_find_prev_inst(gXPF.kernelTextSection, libsptm_initXref, 0, addAny, addAnyMask);
+        if(libsptm_initXref - addAddr == 4) {
+          arm64_register reg;
+          uint16_t imm = 0;
+          arm64_dec_add_imm(pfsec_read32(gXPF.kernelTextSection, addAddr), NULL, &reg, &imm);
+          if(imm) {
+            uint32_t adrpAnyInst = 0, adrpAnyMask = 0;
+            arm64_gen_adr_p(OPT_BOOL(true), OPT_UINT64_NONE, OPT_UINT64_NONE, reg, &adrpAnyInst, &adrpAnyMask);
+            uint64_t adrpAddr = pfsec_find_prev_inst(gXPF.kernelTextSection, addAddr, 0, adrpAnyInst, adrpAnyMask);
+            uint64_t tmpImm = 0;
+            uint16_t tmpImm2 = 0;
+            arm64_dec_adr_p(pfsec_read32(gXPF.kernelTextSection, adrpAddr), adrpAddr, &tmpImm, NULL, NULL);
+            arm64_dec_add_imm(pfsec_read32(gXPF.kernelTextSection, adrpAddr + 4), NULL, NULL, &tmpImm2);
+            if(tmpImm && tmpImm2) {
+              uint64_t sptm_struct_root_table_paddrAddr = tmpImm + tmpImm2 + imm;
+              return sptm_struct_root_table_paddrAddr;
+            }
+          }
+        }
+      }
+    }
+  }
+  return 0;
 }
 
 static uint64_t xpf_find_cpu_ttep(void)
 {
+        if (gXPF.kernelIsFileset && gXPF.kernelBootCodeTextSection && strcmp(gXPF.darwinVersion, "23.0.0") >= 0) {
+          uint64_t sptm_struct = xpf_item_resolve("kernelSymbol.sptm_struct");
+          if(!sptm_struct) {
+            return 0;
+          }
+          uint64_t root_table_paddrAddr = sptm_struct + 0x38; // hardcode for now?
+          PFXrefMetric *root_table_paddrXrefMetric = pfmetric_xref_init(root_table_paddrAddr, XREF_TYPE_MASK_REFERENCE);
+          __block uint64_t root_table_paddrXref = 0;
+          pfmetric_run(gXPF.kernelTextSection, root_table_paddrXrefMetric, ^(uint64_t vmaddr, bool *stop) {
+            root_table_paddrXref = vmaddr;
+            *stop = true;
+          });
+          pfmetric_free(root_table_paddrXrefMetric);
+          arm64_register reg;
+          uint64_t imm = 0;
+          arm64_dec_ldr_imm(pfsec_read32(gXPF.kernelTextSection, root_table_paddrXref), &reg, NULL, &imm, NULL, NULL);
+          if(!imm) {
+            return 0;
+          }
+          uint64_t setupAddr = root_table_paddrAddr - imm;
+          uint32_t strAny = 0, strAnyMask = 0;
+          arm64_gen_str_imm(0, LDR_STR_TYPE_UNSIGNED, reg, ARM64_REG_ANY, OPT_UINT64_NONE, &strAny, &strAnyMask);
+          uint64_t strAddr = pfsec_find_next_inst(gXPF.kernelTextSection, root_table_paddrXref, 0, strAny, strAnyMask);
+          imm = 0;
+          arm64_dec_str_imm(pfsec_read32(gXPF.kernelTextSection, strAddr), NULL, NULL, &imm, NULL, NULL);
+          if(!imm) {
+            return 0;
+          }
+          return setupAddr + imm;
+        }
 	uint64_t start_first_cpu = xpf_item_resolve("kernelSymbol.start_first_cpu");
+
 
 	uint32_t cbzX21Any = 0, cbzX21AnyMask = 0;
 	arm64_gen_cb_n_z(OPT_BOOL(false), ARM64_REG_X(21), OPT_UINT64_NONE, &cbzX21Any, &cbzX21AnyMask);
@@ -1062,6 +1170,7 @@ void xpf_common_init(void)
 {
 	xpf_item_register("kernelSymbol.start_first_cpu", xpf_find_start_first_cpu, NULL);
 	xpf_item_register("kernelConstant.kernel_el", xpf_find_kernel_el, NULL);
+	xpf_item_register("kernelSymbol.sptm_struct", xpf_find_sptm_struct, NULL);
 	xpf_item_register("kernelSymbol.cpu_ttep", xpf_find_cpu_ttep, NULL);
 	xpf_item_register("kernelSymbol.fatal_error_fmt", xpf_find_fatal_error_fmt, NULL);
 	xpf_item_register("kernelSymbol.kalloc_data_external", xpf_find_kalloc_data_external, NULL);
