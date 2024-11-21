@@ -291,6 +291,7 @@ int xpf_start_with_kernel_path(const char *kernelPath)
 		gXPF.kernelSandboxTextSection = xpf_pfsec_init("com.apple.security.sandbox", "__TEXT_EXEC", "__text");
 		gXPF.kernelSandboxStringSection = xpf_pfsec_init("com.apple.security.sandbox", "__TEXT", "__cstring");
 		gXPF.kernelInfoPlistSection = xpf_pfsec_init("com.apple.security.AppleImage4", "__TEXT", "__info_plist");
+                gXPF.kernelBootCodeTextSection = xpf_pfsec_init("com.apple.kernel", "__TEXT_BOOT_EXEC", "__bootcode");
 	}
 	else {
 		gXPF.kernelPrelinkTextSection = xpf_pfsec_init(NULL, "__PRELINK_TEXT", "__text");
