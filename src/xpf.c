@@ -375,6 +375,7 @@ int xpf_start_with_kernel_path(const char *kernelPath)
 		}
 	}
 
+        xpf_sptm_init();
 	xpf_ppl_init();
 	xpf_non_ppl_init();
 	xpf_common_init();
@@ -486,6 +487,7 @@ xpc_object_t xpf_construct_offset_dictionary(const char *sets[])
 
 	uint32_t setCount = (sizeof(gSets)/sizeof(XPFSet*));
 
+
 	for (int i = 0; sets[i]; i++) {
 		for (int j = 0; j < setCount; j++) {
 			if (!strcmp(gSets[j]->name, sets[i])) {
@@ -498,6 +500,7 @@ xpc_object_t xpf_construct_offset_dictionary(const char *sets[])
 				break;
 			}
 			else {
+//				if (j == (setCount-1) && gSets[j]->supported()) {
 				if (j == (setCount-1)) {
 					xpf_set_error("Failed to find set \"%s\"", sets[i]);
 					xpc_release(offsetDictionary);
