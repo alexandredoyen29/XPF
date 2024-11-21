@@ -125,7 +125,12 @@ static uint64_t xpf_find_ARM_TT_L1_INDEX_MASK(void)
 
 static uint64_t xpf_find_PT_INDEX_MAX(void)
 {
-	PFSection *textSection = gXPF.kernelIsArm64e ? gXPF.kernelPPLTextSection : gXPF.kernelTextSection;
+	PFSection *textSection = NULL;
+        if(gXPF.kernelIsArm64e && !gXPF.kernelIsSptm) {
+          textSection = gXPF.kernelPPLTextSection;
+        } else {
+          textSection = gXPF.kernelTextSection;
+        }
 
 	PFStringMetric *stringMetric = pfmetric_string_init("%s: out of PTD entries and for some reason didn't allocate more %d %p");
 	__block uint64_t stringAddr = 0;

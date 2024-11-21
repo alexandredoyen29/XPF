@@ -183,7 +183,7 @@ static uint64_t xpf_find_pp_attr_table(void)
 
 void xpf_non_ppl_init(void)
 {
-	if (!gXPF.kernelIsArm64e) {
+	if (!gXPF.kernelIsArm64e || gXPF.kernelIsSptm) {
 		xpf_item_register("kernelSymbol.pmap_tt_deallocate", xpf_find_pmap_tt_deallocate, NULL);
 		xpf_item_register("kernelSymbol.vm_first_phys", xpf_find_pmap_tt_deallocate_reference, (void*)(uint32_t)1);
 		xpf_item_register("kernelSymbol.pv_head_table", xpf_find_pmap_tt_deallocate_reference, (void*)(uint32_t)2);
